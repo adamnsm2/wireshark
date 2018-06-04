@@ -1364,6 +1364,15 @@ typedef struct wtapng_if_descr_mandatory_s {
                                                    *     pcapng ISB:s or equivalent(?)*/
 } wtapng_if_descr_mandatory_t;
 
+/**
+ * Secrets description data
+ */
+typedef struct wtapng_s_descr_mandatory_s {
+	guint32 				len;				/** length of keyfile in bytes */
+	guint32 				type;				/** type of keys stored in keyfile */
+	char 					*data;				/** string holding keyfile contents */
+} wtapng_s_descr_mandatory_t;
+
 /* Interface description data - Option 11 structure */
 typedef struct wtapng_if_descr_filter_s {
     gchar                 *if_filter_str;         /**< NULL if not available
@@ -1716,6 +1725,15 @@ GArray* wtap_file_get_shb_for_new_file(wtap *wth);
  */
 WS_DLL_PUBLIC
 void wtap_write_shb_comment(wtap *wth, gchar *comment);
+
+/**
+ * @brief Gets existing secrets
+ * @details Returns the secrets collected while reading a pcapng file
+ * @param wth The wiretap session
+ * @return The secrets collected during file reading
+ */
+WS_DLL_PUBLIC
+char *wtap_file_get_secrets_data(wtap *wth, const char *type);
 
 /**
  * @brief Gets existing interface descriptions.

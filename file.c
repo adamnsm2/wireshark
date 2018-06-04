@@ -240,7 +240,8 @@ ws_epan_new(capture_file *cf)
     ws_get_frame_ts,
     cap_file_provider_get_interface_name,
     cap_file_provider_get_interface_description,
-    cap_file_provider_get_user_comment
+    cap_file_provider_get_user_comment,
+    cap_file_provider_get_secrets_data
   };
 
   return epan_new(&cf->provider, &funcs);

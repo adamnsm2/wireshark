@@ -972,6 +972,39 @@ static void idb_copy_mand(wtap_block_t dest_block, wtap_block_t src_block)
     }
 }
 
+static void sdb_create(wtap_block_t block)
+{
+    block->mandatory_data = g_new0(wtapng_s_descr_mandatory_t, 1);
+    wtapng_s_descr_mandatory_t *mand = (wtapng_s_descr_mandatory_t *)block->mandatory_data;
+    mand->len = 0;
+    mand->type = 0;
+    mand->data = NULL;
+}
+
+static void sdb_free_mand(wtap_block_t block)
+{
+    char *data = ((wtapng_s_descr_mandatory_t *)block->mandatory_data)->data;
+    if (data != NULL) {
+        g_free(data);
+    }
+}
+
+static void sdb_copy_mand(wtap_block_t dest_block, wtap_block_t src_block)
+{
+    wtapng_s_descr_mandatory_t *src = (wtapng_s_descr_mandatory_t *)src_block->mandatory_data;
+    sdb_free_mand(dest_block);
+    wtapng_s_descr_mandatory_t *dst = (wtapng_s_descr_mandatory_t *)dest_block->mandatory_data;
+    dst->len = src->len;
+    dst->type = src->type;
+    if (src->data != NULL) {
+        if (dst->data != NULL) {
+            g_free(dst->data);
+        }
+        dst->data = (char *)g_malloc0(dst->len + 1);
+        memcpy(dst->data, src->data, dst->len);
+    }
+}
+
 void wtap_opttypes_initialize(void)
 {
     static wtap_blocktype_t shb_block = {
@@ -1071,6 +1104,16 @@ void wtap_opttypes_initialize(void)
         WTAP_OPTTYPE_UINT8,
         0,
         NULL,
+        NULL
+    };
+
+    static wtap_blocktype_t sdb_block = {
+        WTAP_BLOCK_S_DESCR,
+        "SDB",
+        "Secret Description Block",
+        sdb_create,
+        sdb_free_mand,
+        sdb_copy_mand,
         NULL
     };
 
@@ -1198,6 +1241,11 @@ void wtap_opttypes_initialize(void)
     wtap_opttype_option_register(&idb_block, OPT_IDB_FILTER, &if_filter);
     wtap_opttype_option_register(&idb_block, OPT_IDB_OS, &if_os);
     wtap_opttype_option_register(&idb_block, OPT_IDB_FCSLEN, &if_fcslen);
+
+    /*
+     * Resgister the SDB
+     */
+    wtap_opttype_block_register(WTAP_BLOCK_S_DESCR, &sdb_block);
 
     /*
      * Register the NRB and the options that can appear in it.

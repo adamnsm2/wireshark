@@ -131,6 +131,7 @@ extern void cap_file_init(capture_file *cf);
 const char *cap_file_provider_get_interface_name(struct packet_provider_data *prov, guint32 interface_id);
 const char *cap_file_provider_get_interface_description(struct packet_provider_data *prov, guint32 interface_id);
 const char *cap_file_provider_get_user_comment(struct packet_provider_data *prov, const frame_data *fd);
+const char *cap_file_provider_get_secrets_data(struct packet_provider_data *prov, const char *type);
 void cap_file_provider_set_user_comment(struct packet_provider_data *prov, frame_data *fd, const char *new_comment);
 
 #ifdef __cplusplus

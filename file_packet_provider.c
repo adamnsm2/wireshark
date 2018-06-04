@@ -24,6 +24,14 @@ frame_cmp(gconstpointer a, gconstpointer b, gpointer user_data _U_)
 }
 
 const char *
+cap_file_provider_get_secrets_data(struct packet_provider_data *prov, const char *type)
+{
+  if (prov->wth)
+    return wtap_file_get_secrets_data(prov->wth, type);
+  return NULL;
+}
+
+const char *
 cap_file_provider_get_interface_name(struct packet_provider_data *prov, guint32 interface_id)
 {
   wtapng_iface_descriptions_t *idb_info;

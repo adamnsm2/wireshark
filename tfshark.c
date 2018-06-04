@@ -1043,6 +1043,7 @@ tfshark_epan_new(capture_file *cf)
     no_interface_name,
     NULL,
     NULL,
+    NULL
   };
 
   return epan_new(&cf->provider, &funcs);

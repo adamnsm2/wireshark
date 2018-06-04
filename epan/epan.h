@@ -44,6 +44,8 @@ struct packet_provider_funcs {
 	const char *(*get_interface_name)(struct packet_provider_data *prov, guint32 interface_id);
 	const char *(*get_interface_description)(struct packet_provider_data *prov, guint32 interface_id);
 	const char *(*get_user_comment)(struct packet_provider_data *prov, const frame_data *fd);
+	/* Get the secrets parsed in the pcapng file */
+	const char *(*get_secrets_data)(struct packet_provider_data *prov, const char *type);
 };
 
 #ifdef HAVE_PLUGINS
@@ -151,6 +153,8 @@ WS_DLL_PUBLIC const char *epan_get_user_comment(const epan_t *session, const fra
 WS_DLL_PUBLIC const char *epan_get_interface_name(const epan_t *session, guint32 interface_id);
 
 WS_DLL_PUBLIC const char *epan_get_interface_description(const epan_t *session, guint32 interface_id);
+
+WS_DLL_PUBLIC const char *epan_get_secrets_data(const epan_t *session, const char *type);
 
 const nstime_t *epan_get_frame_ts(const epan_t *session, guint32 frame_num);
 

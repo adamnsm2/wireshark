@@ -149,6 +149,18 @@ class case_decrypt_tls(subprocesstest.SubprocessTestCase):
             env=config.test_env)
         self.assertTrue(self.grepOutput('/'))
 
+    def test_ssl_combined_pcapng_keyfile(self):
+        capture_file = os.path.join(config.capture_dir, 'pcapng_with_ssl_sdb.pcapng')
+        self.runProcess((config.cmd_tshark,
+            '-r', capture_file,
+            '-o', 'http.ssl.port: 4430',
+            '-Tfields',
+            '-e', 'http.request.uri',
+            '-Y', 'http',
+            ),
+            env=config.test_env)
+        self.assertTrue(self.grepOutput('/'))
+
     def test_ssl_with_password(self):
         '''SSL using the server's private key with password'''
         capture_file = os.path.join(config.capture_dir, 'dmgr.pcapng')

@@ -245,6 +245,7 @@ register_pcapng_block_type_handler(guint block_type, block_reader reader,
     case BLOCK_TYPE_NRB:
     case BLOCK_TYPE_ISB:
     case BLOCK_TYPE_EPB:
+    case BLOCK_TYPE_SDB:
     case BLOCK_TYPE_SYSDIG_EVENT:
         /*
          * Yes; we already handle it, and don't allow a replacement to
@@ -336,8 +337,9 @@ register_pcapng_block_type_handler(guint block_type, block_reader reader,
 #define BT_INDEX_NRB        3
 #define BT_INDEX_ISB        4
 #define BT_INDEX_EVT        5
+#define BT_INDEX_SDB        6
 
-#define NUM_BT_INDICES      6
+#define NUM_BT_INDICES      7
 
 typedef struct {
     option_handler_fn hfunc;
@@ -377,6 +379,10 @@ get_block_type_index(guint block_type, guint *bt_index)
         case BLOCK_TYPE_SYSDIG_EVENT:
         /* case BLOCK_TYPE_SYSDIG_EVF: */
             *bt_index = BT_INDEX_EVT;
+            break;
+
+        case BLOCK_TYPE_SDB:
+            *bt_index = BT_INDEX_SDB;
             break;
 
         default:
@@ -1029,6 +1035,50 @@ pcapng_read_if_descr_block(wtap *wth, FILE_T fh, pcapng_block_header_t *bh,
     return TRUE;
 }
 
+static gboolean
+pcapng_read_secret_description_block(FILE_T fh, pcapng_block_header_t *bh, pcapng_t *pn,
+    wtapng_block_t *wblock, int *err, gchar **err_info)
+{
+    guint to_read;
+    pcapng_secrets_description_block_t sdb;
+    wtapng_s_descr_mandatory_t *s_descr_mand;
+
+    /* read block content */
+    if (!wtap_read_bytes(fh, &sdb, sizeof sdb, err, err_info)) {
+        pcapng_debug("pcapng_read_s_descr_block: failed to read SDB");
+        return FALSE;
+    }
+
+    /* mandatory values */
+    wblock->block = wtap_block_create(WTAP_BLOCK_S_DESCR);
+    s_descr_mand = (wtapng_s_descr_mandatory_t *)wtap_block_get_mandatory_data(wblock->block);
+    if (pn->byte_swapped) {
+      s_descr_mand->len = GUINT32_SWAP_LE_BE(sdb.bytes);
+      s_descr_mand->type = GUINT32_SWAP_LE_BE(sdb.type);
+    }
+    else {
+      s_descr_mand->len = sdb.bytes;
+      s_descr_mand->type = sdb.type;
+    }
+    guint32 diff = 0;
+    if (s_descr_mand->len > SSL_MAX_BYTES) {
+      pcapng_debug("pcapng_read_s_descr_block: keyfile contents too long, truncating");
+      diff = s_descr_mand->len - SSL_MAX_BYTES;
+      s_descr_mand->len = SSL_MAX_BYTES;
+    }
+    s_descr_mand->data = (char *)g_malloc0(s_descr_mand->len + 1);
+    if (!wtap_read_bytes(fh, s_descr_mand->data, s_descr_mand->len, err, err_info)) {
+        pcapng_debug("pcapng_read_s_descr_block: failed to read SDB");
+        return FALSE;
+    }
+
+    /** Skip over any secrets that were truncated */
+    wtap_read_bytes(fh, NULL, diff, err, err_info);
+
+    /** Don't support Options yet, just seek past them **/
+    to_read = bh->block_total_length - MIN_SDB_SIZE - s_descr_mand->len;
+    return wtap_read_bytes(fh, NULL, to_read, err,err_info);
+}
 
 static gboolean
 pcapng_read_packet_block(FILE_T fh, pcapng_block_header_t *bh, pcapng_t *pn, wtapng_block_t *wblock, int *err, gchar **err_info, gboolean enhanced)
@@ -2402,6 +2452,10 @@ pcapng_read_block(wtap *wth, FILE_T fh, pcapng_t *pn, wtapng_block_t *wblock, in
                 if (!pcapng_read_interface_statistics_block(fh, &bh, pn, wblock, err, err_info))
                     return PCAPNG_BLOCK_ERROR;
                 break;
+            case(BLOCK_TYPE_SDB):
+                if (!pcapng_read_secret_description_block(fh, &bh, pn, wblock, err, err_info))
+                    return PCAPNG_BLOCK_ERROR;
+                break;
             case(BLOCK_TYPE_SYSDIG_EVENT):
             /* case(BLOCK_TYPE_SYSDIG_EVF): */
                 if (!pcapng_read_sysdig_event_block(fh, &bh, pn, wblock, err, err_info))
@@ -2432,6 +2486,39 @@ pcapng_read_block(wtap *wth, FILE_T fh, pcapng_t *pn, wtapng_block_t *wblock, in
         return PCAPNG_BLOCK_ERROR;
     }
     return PCAPNG_BLOCK_OK;
+}
+
+/* Converts a secret type hex code to a string key */
+static const char *
+pcapng_get_secret_type(guint32 t) {
+  switch(t) {
+    case(SECRET_TYPE_SSL):
+      return "ssl";
+    default:
+      return "unknown";
+  }
+}
+
+/* Process an SDB that we've just read, copying the wblock and adding to the wtap secrets_data */
+static void
+pcapng_process_sdb(wtap *wth, wtapng_block_t *wblock) {
+    wtap_block_t sdata = wtap_block_create(WTAP_BLOCK_S_DESCR);
+    wtap_block_copy(sdata, wblock->block);
+    wtapng_s_descr_mandatory_t *s_descr_mand = (wtapng_s_descr_mandatory_t *)wtap_block_get_mandatory_data(sdata);
+    size_t len;
+    const char *type = pcapng_get_secret_type(s_descr_mand->type);
+    char *secrets = (char *)g_hash_table_lookup(wth->secrets_data, (gpointer)type);
+    if (!secrets) {
+      len = 0;
+    }
+    else {
+      len = strlen(secrets);
+    }
+    if (s_descr_mand->data != NULL) {
+      secrets = (char *)g_realloc(secrets, len + s_descr_mand->len + 1);
+      memcpy(secrets + len, s_descr_mand->data, s_descr_mand->len + 1);
+      g_hash_table_insert(wth->secrets_data, (gpointer)type, secrets);
+    }
 }
 
 /* Process an IDB that we've just read. The contents of wblock are copied as needed. */
@@ -2539,7 +2626,7 @@ pcapng_open(wtap *wth, int *err, gchar **err_info)
     wth->subtype_close = pcapng_close;
     wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_PCAPNG;
 
-    /* Loop over all IDB:s that appear before any packets */
+    /* Loop over all IDB:s and SDB:s that appear before any packets */
     while (1) {
         /* peek at next block */
         /* Try to read the (next) block header */
@@ -2563,8 +2650,8 @@ pcapng_open(wtap *wth, int *err, gchar **err_info)
 
         pcapng_debug("pcapng_open: Check for more IDB:s block_type 0x%x", bh.block_type);
 
-        if (bh.block_type != BLOCK_TYPE_IDB) {
-            break;  /* No more IDB:s */
+        if (bh.block_type != BLOCK_TYPE_IDB && bh.block_type != BLOCK_TYPE_SDB) {
+            break;  /* No more IDB:s or SDB:s */
         }
         if (pcapng_read_block(wth, wth->fh, &pn, &wblock, err, err_info) != PCAPNG_BLOCK_OK) {
             wtap_block_free(wblock.block);
@@ -2576,7 +2663,10 @@ pcapng_open(wtap *wth, int *err, gchar **err_info)
                 return WTAP_OPEN_ERROR;
             }
         }
-        pcapng_process_idb(wth, pcapng, &wblock);
+        if (bh.block_type == BLOCK_TYPE_IDB)
+            pcapng_process_idb(wth, pcapng, &wblock);
+        else
+            pcapng_process_sdb(wth, &wblock);
         wtap_block_free(wblock.block);
         pcapng_debug("pcapng_open: Read IDB number_of_interfaces %u, wtap_encap %i",
                       wth->interface_data->len, wth->file_encap);
@@ -2635,6 +2725,12 @@ pcapng_read(wtap *wth, int *err, gchar **err_info, gint64 *data_offset)
                 /* A new interface */
                 pcapng_debug("pcapng_read: block type BLOCK_TYPE_IDB");
                 pcapng_process_idb(wth, pcapng, &wblock);
+                wtap_block_free(wblock.block);
+                break;
+
+            case(BLOCK_TYPE_SDB):
+                pcapng_debug("pcapng_read: block type BLOCK_TYPE_SDB");
+                pcapng_process_sdb(wth, &wblock);
                 wtap_block_free(wblock.block);
                 break;
 
@@ -2701,7 +2797,6 @@ pcapng_read(wtap *wth, int *err, gchar **err_info, gint64 *data_offset)
                 break;
         }
     }
-
     /*pcapng_debug("Read length: %u Packet length: %u", bytes_read, wth->rec.rec_header.packet_header.caplen);*/
     pcapng_debug("pcapng_read: data_offset is finally %" G_GINT64_MODIFIER "d", *data_offset);
 

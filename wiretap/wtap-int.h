@@ -43,6 +43,8 @@ struct wtap {
     GArray                      *interface_data;        /**< An array holding the interface data from pcapng IDB:s or equivalent(?)*/
     GArray                      *nrb_hdrs;              /**< holds the Name Res Block's comment/custom_opts, or NULL */
 
+    GHashTable                  *secrets_data;   /* This holds the ssl/tls secrets data parsed from the pcapng block */
+
     void                        *priv;          /* this one holds per-file state and is free'd automatically by wtap_close() */
     void                        *wslua_data;    /* this one holds wslua state info and is not free'd */
 

@@ -143,6 +143,11 @@ wtap_write_shb_comment(wtap *wth, gchar *comment)
 	}
 }
 
+char *
+wtap_file_get_secrets_data(wtap *wth, const char *type) {
+	return (char *)g_hash_table_lookup(wth->secrets_data, type);
+}
+
 wtapng_iface_descriptions_t *
 wtap_file_get_idb_info(wtap *wth)
 {

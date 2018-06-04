@@ -24,8 +24,17 @@
 #define BLOCK_TYPE_EPB          0x00000006 /* Enhanced Packet Block */
 #define BLOCK_TYPE_IRIG_TS      0x00000007 /* IRIG Timestamp Block */
 #define BLOCK_TYPE_ARINC_429    0x00000008 /* ARINC 429 in AFDX Encapsulation Information Block */
+#define BLOCK_TYPE_SDB          0x000001bb /* Block containg SSL keylog */
 #define BLOCK_TYPE_SYSDIG_EVENT 0x00000204 /* Sysdig Event Block */
 #define BLOCK_TYPE_SYSDIG_EVF   0x00000208 /* Sysdig Event Block with flags */
+
+/*
+ * Secret types for SDB:s
+ */
+#define SECRET_TYPE_SSL 		0x00000001 /* SSL Secret Type */
+
+/* Maximum number of lines in an SSL SDB. It is equal to 1GB */
+#define SSL_MAX_BYTES 			1000000000
 
 /* TODO: the following are not yet well defined in the draft spec,
  * and do not yet have block type values assigned to them:

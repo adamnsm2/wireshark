@@ -53,6 +53,13 @@ typedef struct pcapng_interface_statistics_block_s {
     /* ... Options ... */
 } pcapng_interface_statistics_block_t;
 
+/* pcapng: secrets description block file encoding */
+typedef struct pcapng_secrets_description_block_s {
+    guint32 type;
+    guint32 bytes;
+    /* ... Options ... */
+} pcapng_secrets_description_block_t;
+
 struct pcapng_option_header {
     guint16 type;
     guint16 value_length;
@@ -62,6 +69,7 @@ struct pcapng_option_header {
  * Minimum IDB size = minimum block size + size of fixed length portion of IDB.
  */
 #define MIN_IDB_SIZE    ((guint32)(MIN_BLOCK_SIZE + sizeof(pcapng_interface_description_block_t)))
+#define MIN_SDB_SIZE    ((guint32)(MIN_BLOCK_SIZE + sizeof(pcapng_secrets_description_block_t)))
 
 wtap_open_return_val pcapng_open(wtap *wth, int *err, gchar **err_info);
 gboolean pcapng_dump_open(wtap_dumper *wdh, int *err);

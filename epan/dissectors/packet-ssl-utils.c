@@ -4715,10 +4715,9 @@ ssl_get_record_info(tvbuff_t *parent_tvb, int proto, packet_info *pinfo, gint re
 /* Links SSL records with the real packet data. }}} */
 
 /* initialize/reset per capture state data (ssl sessions cache). {{{ */
-void
-ssl_common_init(ssl_master_key_map_t *mk_map,
-                StringInfo *decrypted_data, StringInfo *compressed_data)
-{
+
+static void
+ssl_master_key_map_init(ssl_master_key_map_t *mk_map) {
     mk_map->session = g_hash_table_new(ssl_hash, ssl_equal);
     mk_map->tickets = g_hash_table_new(ssl_hash, ssl_equal);
     mk_map->crandom = g_hash_table_new(ssl_hash, ssl_equal);
@@ -4731,14 +4730,10 @@ ssl_common_init(ssl_master_key_map_t *mk_map,
     mk_map->tls13_server_appdata = g_hash_table_new(ssl_hash, ssl_equal);
     mk_map->tls13_early_exporter = g_hash_table_new(ssl_hash, ssl_equal);
     mk_map->tls13_exporter = g_hash_table_new(ssl_hash, ssl_equal);
-    ssl_data_alloc(decrypted_data, 32);
-    ssl_data_alloc(compressed_data, 32);
 }
 
-void
-ssl_common_cleanup(ssl_master_key_map_t *mk_map, FILE **ssl_keylog_file,
-                   StringInfo *decrypted_data, StringInfo *compressed_data)
-{
+static void
+ssl_master_key_map_destroy(ssl_master_key_map_t *mk_map) {
     g_hash_table_destroy(mk_map->session);
     g_hash_table_destroy(mk_map->tickets);
     g_hash_table_destroy(mk_map->crandom);
@@ -4751,7 +4746,22 @@ ssl_common_cleanup(ssl_master_key_map_t *mk_map, FILE **ssl_keylog_file,
     g_hash_table_destroy(mk_map->tls13_server_appdata);
     g_hash_table_destroy(mk_map->tls13_early_exporter);
     g_hash_table_destroy(mk_map->tls13_exporter);
+}
 
+void
+ssl_common_init(ssl_master_key_map_t *mk_map,
+                StringInfo *decrypted_data, StringInfo *compressed_data)
+{
+    ssl_master_key_map_init(mk_map);
+    ssl_data_alloc(decrypted_data, 32);
+    ssl_data_alloc(compressed_data, 32);
+}
+
+void
+ssl_common_cleanup(ssl_master_key_map_t *mk_map, FILE **ssl_keylog_file,
+                   StringInfo *decrypted_data, StringInfo *compressed_data)
+{
+    ssl_master_key_map_destroy(mk_map);
     g_free(decrypted_data->data);
     g_free(compressed_data->data);
 
@@ -5140,6 +5150,114 @@ tls13_key_update(SslDecryptSession *ssl, gboolean is_from_server)
 }
 
 /** SSL keylog file handling. {{{ */
+static gboolean
+file_needs_reopen(FILE *fp, const char *filename)
+{
+    ws_statb64 open_stat, current_stat;
+
+    /* consider a file deleted when stat fails for either file,
+     * or when the residing device / inode has changed. */
+    if (0 != ws_fstat64(ws_fileno(fp), &open_stat))
+        return TRUE;
+    if (0 != ws_stat64(filename, &current_stat))
+        return TRUE;
+
+    /* Note: on Windows, ino may be 0. Existing files cannot be deleted on
+     * Windows, but hopefully the size is a good indicator when a file got
+     * removed and recreated */
+    return  open_stat.st_dev != current_stat.st_dev ||
+            open_stat.st_ino != current_stat.st_ino ||
+            open_stat.st_size > current_stat.st_size;
+}
+
+typedef struct ssl_master_key_match_group {
+    const char *re_group_name;
+    GHashTable *master_key_ht;
+} ssl_master_key_match_group_t;
+
+void
+ssl_load_keyline(char *line, const ssl_master_key_map_t *mk_map, GRegex *regex) {
+    unsigned i;
+    ssl_master_key_match_group_t mk_groups[] = {
+        { "encrypted_pmk",  mk_map->pre_master },
+        { "session_id",     mk_map->session },
+        { "client_random",  mk_map->crandom },
+        { "client_random_pms",  mk_map->pms },
+        /* TLS 1.3 map from Client Random to derived secret. */
+        { "client_early",       mk_map->tls13_client_early },
+        { "client_handshake",   mk_map->tls13_client_handshake },
+        { "server_handshake",   mk_map->tls13_server_handshake },
+        { "client_appdata",     mk_map->tls13_client_appdata },
+        { "server_appdata",     mk_map->tls13_server_appdata },
+        { "early_exporter",     mk_map->tls13_early_exporter },
+        { "exporter",           mk_map->tls13_exporter },
+    };
+
+    gsize bytes_read;
+    GMatchInfo *mi;
+
+    bytes_read = strlen(line);
+    /* fgets includes the \n at the end of the line. */
+    if (bytes_read > 0 && line[bytes_read - 1] == '\n') {
+        line[bytes_read - 1] = 0;
+        bytes_read--;
+    }
+    if (bytes_read > 0 && line[bytes_read - 1] == '\r') {
+        line[bytes_read - 1] = 0;
+        bytes_read--;
+    }
+
+    ssl_debug_printf("  checking keylog line: %s\n", line);
+    if (g_regex_match(regex, line, G_REGEX_MATCH_ANCHORED, &mi)) {
+        gchar *hex_key, *hex_pre_ms_or_ms;
+        StringInfo *key = wmem_new(wmem_file_scope(), StringInfo);
+        StringInfo *pre_ms_or_ms = NULL;
+        GHashTable *ht = NULL;
+
+        /* Is the PMS being supplied with the PMS_CLIENT_RANDOM
+         * otherwise we will use the Master Secret
+         */
+        hex_pre_ms_or_ms = g_match_info_fetch_named(mi, "master_secret");
+        if (hex_pre_ms_or_ms == NULL || !*hex_pre_ms_or_ms) {
+            g_free(hex_pre_ms_or_ms);
+            hex_pre_ms_or_ms = g_match_info_fetch_named(mi, "pms");
+        }
+        if (hex_pre_ms_or_ms == NULL || !*hex_pre_ms_or_ms) {
+            g_free(hex_pre_ms_or_ms);
+            hex_pre_ms_or_ms = g_match_info_fetch_named(mi, "derived_secret");
+        }
+        /* There is always a match, otherwise the regex is wrong. */
+        DISSECTOR_ASSERT(hex_pre_ms_or_ms && strlen(hex_pre_ms_or_ms));
+
+        /* convert from hex to bytes and save to hashtable */
+        pre_ms_or_ms = wmem_new(wmem_file_scope(), StringInfo);
+        from_hex(pre_ms_or_ms, hex_pre_ms_or_ms, strlen(hex_pre_ms_or_ms));
+        g_free(hex_pre_ms_or_ms);
+
+        /* Find a master key from any format (CLIENT_RANDOM, SID, ...) */
+        for (i = 0; i < G_N_ELEMENTS(mk_groups); i++) {
+            ssl_master_key_match_group_t *g = &mk_groups[i];
+            hex_key = g_match_info_fetch_named(mi, g->re_group_name);
+            if (hex_key && *hex_key) {
+                ssl_debug_printf("    matched %s\n", g->re_group_name);
+                ht = g->master_key_ht;
+                from_hex(key, hex_key, strlen(hex_key));
+                g_free(hex_key);
+                break;
+            }
+            g_free(hex_key);
+        }
+        DISSECTOR_ASSERT(ht); /* Cannot be reached, or regex is wrong. */
+
+        g_hash_table_insert(ht, key, pre_ms_or_ms);
+
+    } else {
+        ssl_debug_printf("    unrecognized line\n");
+    }
+    /* always free match info even if there is no match. */
+    g_match_info_free(mi);
+}
+
 
 static GRegex *
 ssl_compile_keyfile_regex(void)
@@ -5190,51 +5308,34 @@ ssl_compile_keyfile_regex(void)
     return regex;
 }
 
-static gboolean
-file_needs_reopen(FILE *fp, const char *filename)
-{
-    ws_statb64 open_stat, current_stat;
 
-    /* consider a file deleted when stat fails for either file,
-     * or when the residing device / inode has changed. */
-    if (0 != ws_fstat64(ws_fileno(fp), &open_stat))
-        return TRUE;
-    if (0 != ws_stat64(filename, &current_stat))
-        return TRUE;
 
-    /* Note: on Windows, ino may be 0. Existing files cannot be deleted on
-     * Windows, but hopefully the size is a good indicator when a file got
-     * removed and recreated */
-    return  open_stat.st_dev != current_stat.st_dev ||
-            open_stat.st_ino != current_stat.st_ino ||
-            open_stat.st_size > current_stat.st_size;
+void
+ssl_load_keymem(const char *secrets, ssl_master_key_map_t *mk_map) {
+    /* Note: we have already guaranteed by its construction that secrets is
+     * null-terminated, so functions like strlen and strtok are safe
+     */
+    if (secrets == NULL) {
+        return;
+    }
+    GRegex *regex = ssl_compile_keyfile_regex();
+    // Copy secrets so that we can modify it safely with strtok
+    char *temp = g_strdup(secrets);
+    char *line;
+    const char delim[3] = "\r\n";
+    line = strtok(temp, delim);
+    // Load lines
+    while (line != NULL) {
+        ssl_load_keyline(line, mk_map, regex);
+        line = strtok(NULL, delim);
+    }
+    g_free(temp);
 }
-
-typedef struct ssl_master_key_match_group {
-    const char *re_group_name;
-    GHashTable *master_key_ht;
-} ssl_master_key_match_group_t;
 
 void
 ssl_load_keyfile(const gchar *ssl_keylog_filename, FILE **keylog_file,
                  const ssl_master_key_map_t *mk_map)
 {
-    unsigned i;
-    GRegex *regex;
-    ssl_master_key_match_group_t mk_groups[] = {
-        { "encrypted_pmk",  mk_map->pre_master },
-        { "session_id",     mk_map->session },
-        { "client_random",  mk_map->crandom },
-        { "client_random_pms",  mk_map->pms },
-        /* TLS 1.3 map from Client Random to derived secret. */
-        { "client_early",       mk_map->tls13_client_early },
-        { "client_handshake",   mk_map->tls13_client_handshake },
-        { "server_handshake",   mk_map->tls13_server_handshake },
-        { "client_appdata",     mk_map->tls13_client_appdata },
-        { "server_appdata",     mk_map->tls13_server_appdata },
-        { "early_exporter",     mk_map->tls13_early_exporter },
-        { "exporter",           mk_map->tls13_exporter },
-    };
     /* no need to try if no key log file is configured. */
     if (!ssl_keylog_filename || !*ssl_keylog_filename) {
         ssl_debug_printf("%s dtls/ssl.keylog_file is not configured!\n",
@@ -5280,7 +5381,7 @@ ssl_load_keyfile(const gchar *ssl_keylog_filename, FILE **keylog_file,
      *     handshake or master secrets. (This format is introduced with TLS 1.3
      *     and supported by BoringSSL, OpenSSL, etc. See bug 12779.)
      */
-    regex = ssl_compile_keyfile_regex();
+    GRegex *regex = ssl_compile_keyfile_regex();
     if (!regex)
         return;
 
@@ -5303,75 +5404,13 @@ ssl_load_keyfile(const gchar *ssl_keylog_filename, FILE **keylog_file,
 
     for (;;) {
         char buf[512], *line;
-        gsize bytes_read;
-        GMatchInfo *mi;
-
         line = fgets(buf, sizeof(buf), *keylog_file);
         if (!line)
             break;
-
-        bytes_read = strlen(line);
-        /* fgets includes the \n at the end of the line. */
-        if (bytes_read > 0 && line[bytes_read - 1] == '\n') {
-            line[bytes_read - 1] = 0;
-            bytes_read--;
-        }
-        if (bytes_read > 0 && line[bytes_read - 1] == '\r') {
-            line[bytes_read - 1] = 0;
-            bytes_read--;
-        }
-
-        ssl_debug_printf("  checking keylog line: %s\n", line);
-        if (g_regex_match(regex, line, G_REGEX_MATCH_ANCHORED, &mi)) {
-            gchar *hex_key, *hex_pre_ms_or_ms;
-            StringInfo *key = wmem_new(wmem_file_scope(), StringInfo);
-            StringInfo *pre_ms_or_ms = NULL;
-            GHashTable *ht = NULL;
-
-            /* Is the PMS being supplied with the PMS_CLIENT_RANDOM
-             * otherwise we will use the Master Secret
-             */
-            hex_pre_ms_or_ms = g_match_info_fetch_named(mi, "master_secret");
-            if (hex_pre_ms_or_ms == NULL || !*hex_pre_ms_or_ms) {
-                g_free(hex_pre_ms_or_ms);
-                hex_pre_ms_or_ms = g_match_info_fetch_named(mi, "pms");
-            }
-            if (hex_pre_ms_or_ms == NULL || !*hex_pre_ms_or_ms) {
-                g_free(hex_pre_ms_or_ms);
-                hex_pre_ms_or_ms = g_match_info_fetch_named(mi, "derived_secret");
-            }
-            /* There is always a match, otherwise the regex is wrong. */
-            DISSECTOR_ASSERT(hex_pre_ms_or_ms && strlen(hex_pre_ms_or_ms));
-
-            /* convert from hex to bytes and save to hashtable */
-            pre_ms_or_ms = wmem_new(wmem_file_scope(), StringInfo);
-            from_hex(pre_ms_or_ms, hex_pre_ms_or_ms, strlen(hex_pre_ms_or_ms));
-            g_free(hex_pre_ms_or_ms);
-
-            /* Find a master key from any format (CLIENT_RANDOM, SID, ...) */
-            for (i = 0; i < G_N_ELEMENTS(mk_groups); i++) {
-                ssl_master_key_match_group_t *g = &mk_groups[i];
-                hex_key = g_match_info_fetch_named(mi, g->re_group_name);
-                if (hex_key && *hex_key) {
-                    ssl_debug_printf("    matched %s\n", g->re_group_name);
-                    ht = g->master_key_ht;
-                    from_hex(key, hex_key, strlen(hex_key));
-                    g_free(hex_key);
-                    break;
-                }
-                g_free(hex_key);
-            }
-            DISSECTOR_ASSERT(ht); /* Cannot be reached, or regex is wrong. */
-
-            g_hash_table_insert(ht, key, pre_ms_or_ms);
-
-        } else {
-            ssl_debug_printf("    unrecognized line\n");
-        }
-        /* always free match info even if there is no match. */
-        g_match_info_free(mi);
+        ssl_load_keyline(line, mk_map, regex);
     }
 }
+
 /** SSL keylog file handling. }}} */
 
 #ifdef SSL_DECRYPT_DEBUG /* {{{ */

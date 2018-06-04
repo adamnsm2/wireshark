@@ -850,6 +850,8 @@ wtap_open_offline(const char *filename, unsigned int type, int *err, char **err_
 	 * Always initing it here saves checking for a NULL ptr later. */
 	wth->interface_data = g_array_new(FALSE, FALSE, sizeof(wtap_block_t));
 
+	wth->secrets_data = g_hash_table_new(g_str_hash, g_str_equal);
+
 	if (wth->random_fh) {
 		wth->fast_seek = g_ptr_array_new();
 

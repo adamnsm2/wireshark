@@ -22,6 +22,7 @@
 #include <epan/conversation.h>
 #include <epan/unit_strings.h>
 #include <wsutil/wsgcrypt.h>
+#include <epan/epan.h>
 
 #ifdef HAVE_LIBGNUTLS
 #include <gnutls/x509.h>
@@ -686,6 +687,10 @@ ssl_common_init(ssl_master_key_map_t *master_key_map,
 extern void
 ssl_common_cleanup(ssl_master_key_map_t *master_key_map, FILE **ssl_keylog_file,
                    StringInfo *decrypted_data, StringInfo *compressed_data);
+
+/* tries to update the secrets cache from an in-memory keyfile */
+extern void
+ssl_load_keymem(const char *secrets, ssl_master_key_map_t *mk_map);
 
 /* tries to update the secrets cache from the given filename */
 extern void

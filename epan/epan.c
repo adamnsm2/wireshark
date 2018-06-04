@@ -401,6 +401,15 @@ epan_get_interface_description(const epan_t *session, guint32 interface_id)
 	return NULL;
 }
 
+const char *
+epan_get_secrets_data(const epan_t *session, const char *type)
+{
+	if (session->funcs.get_secrets_data) {
+		return session->funcs.get_secrets_data(session->prov, type);
+	}
+	return NULL;
+}
+
 const nstime_t *
 epan_get_frame_ts(const epan_t *session, guint32 frame_num)
 {
