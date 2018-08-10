@@ -153,7 +153,7 @@ class case_decrypt_tls(subprocesstest.SubprocessTestCase):
         capture_file = os.path.join(config.capture_dir, 'pcapng_with_ssl_sdb.pcapng')
         self.runProcess((config.cmd_tshark,
             '-r', capture_file,
-            '-o', 'http.ssl.port: 4430',
+            '-dssl.port==4430,http',
             '-Tfields',
             '-e', 'http.request.uri',
             '-Y', 'http',

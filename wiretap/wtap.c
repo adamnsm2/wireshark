@@ -143,9 +143,9 @@ wtap_write_shb_comment(wtap *wth, gchar *comment)
 	}
 }
 
-char *
+const char *
 wtap_file_get_secrets_data(wtap *wth, const char *type) {
-	return (char *)g_hash_table_lookup(wth->secrets_data, type);
+	return (const char *)g_hash_table_lookup(wth->secrets_data, type);
 }
 
 wtapng_iface_descriptions_t *
@@ -1204,6 +1204,8 @@ wtap_close(wtap *wth)
 	wtap_block_array_free(wth->shb_hdrs);
 	wtap_block_array_free(wth->nrb_hdrs);
 	wtap_block_array_free(wth->interface_data);
+
+	g_hash_table_destroy(wth->secrets_data);
 
 	g_free(wth);
 }

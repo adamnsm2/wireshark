@@ -1053,21 +1053,21 @@ pcapng_read_secret_description_block(FILE_T fh, pcapng_block_header_t *bh, pcapn
     wblock->block = wtap_block_create(WTAP_BLOCK_S_DESCR);
     s_descr_mand = (wtapng_s_descr_mandatory_t *)wtap_block_get_mandatory_data(wblock->block);
     if (pn->byte_swapped) {
-      s_descr_mand->len = GUINT32_SWAP_LE_BE(sdb.bytes);
       s_descr_mand->type = GUINT32_SWAP_LE_BE(sdb.type);
+      s_descr_mand->data_len = GUINT32_SWAP_LE_BE(sdb.data_len);
     }
     else {
-      s_descr_mand->len = sdb.bytes;
       s_descr_mand->type = sdb.type;
+      s_descr_mand->data_len = sdb.data_len;
     }
     guint32 diff = 0;
-    if (s_descr_mand->len > SSL_MAX_BYTES) {
+    if (s_descr_mand->data_len > SSL_MAX_BYTES) {
       pcapng_debug("pcapng_read_s_descr_block: keyfile contents too long, truncating");
-      diff = s_descr_mand->len - SSL_MAX_BYTES;
-      s_descr_mand->len = SSL_MAX_BYTES;
+      diff = s_descr_mand->data_len - SSL_MAX_BYTES;
+      s_descr_mand->data_len = SSL_MAX_BYTES;
     }
-    s_descr_mand->data = (char *)g_malloc0(s_descr_mand->len + 1);
-    if (!wtap_read_bytes(fh, s_descr_mand->data, s_descr_mand->len, err, err_info)) {
+    s_descr_mand->data = (char *)g_malloc0(s_descr_mand->data_len + 1);
+    if (!wtap_read_bytes(fh, s_descr_mand->data, s_descr_mand->data_len, err, err_info)) {
         pcapng_debug("pcapng_read_s_descr_block: failed to read SDB");
         return FALSE;
     }
@@ -1076,7 +1076,7 @@ pcapng_read_secret_description_block(FILE_T fh, pcapng_block_header_t *bh, pcapn
     wtap_read_bytes(fh, NULL, diff, err, err_info);
 
     /** Don't support Options yet, just seek past them **/
-    to_read = bh->block_total_length - MIN_SDB_SIZE - s_descr_mand->len;
+    to_read = bh->block_total_length - MIN_SDB_SIZE - s_descr_mand->data_len;
     return wtap_read_bytes(fh, NULL, to_read, err,err_info);
 }
 
@@ -2515,8 +2515,8 @@ pcapng_process_sdb(wtap *wth, wtapng_block_t *wblock) {
       len = strlen(secrets);
     }
     if (s_descr_mand->data != NULL) {
-      secrets = (char *)g_realloc(secrets, len + s_descr_mand->len + 1);
-      memcpy(secrets + len, s_descr_mand->data, s_descr_mand->len + 1);
+      secrets = (char *)g_realloc(secrets, len + s_descr_mand->data_len + 1);
+      memcpy(secrets + len, s_descr_mand->data, s_descr_mand->data_len + 1);
       g_hash_table_insert(wth->secrets_data, (gpointer)type, secrets);
     }
 }
@@ -2797,6 +2797,7 @@ pcapng_read(wtap *wth, int *err, gchar **err_info, gint64 *data_offset)
                 break;
         }
     }
+
     /*pcapng_debug("Read length: %u Packet length: %u", bytes_read, wth->rec.rec_header.packet_header.caplen);*/
     pcapng_debug("pcapng_read: data_offset is finally %" G_GINT64_MODIFIER "d", *data_offset);
 

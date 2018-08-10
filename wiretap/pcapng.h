@@ -56,7 +56,7 @@ typedef struct pcapng_interface_statistics_block_s {
 /* pcapng: secrets description block file encoding */
 typedef struct pcapng_secrets_description_block_s {
     guint32 type;
-    guint32 bytes;
+    guint32 data_len;
     /* ... Options ... */
 } pcapng_secrets_description_block_t;
 

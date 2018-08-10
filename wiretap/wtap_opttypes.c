@@ -976,7 +976,7 @@ static void sdb_create(wtap_block_t block)
 {
     block->mandatory_data = g_new0(wtapng_s_descr_mandatory_t, 1);
     wtapng_s_descr_mandatory_t *mand = (wtapng_s_descr_mandatory_t *)block->mandatory_data;
-    mand->len = 0;
+    mand->data_len = 0;
     mand->type = 0;
     mand->data = NULL;
 }
@@ -984,9 +984,7 @@ static void sdb_create(wtap_block_t block)
 static void sdb_free_mand(wtap_block_t block)
 {
     char *data = ((wtapng_s_descr_mandatory_t *)block->mandatory_data)->data;
-    if (data != NULL) {
-        g_free(data);
-    }
+    g_free(data);
 }
 
 static void sdb_copy_mand(wtap_block_t dest_block, wtap_block_t src_block)
@@ -994,15 +992,10 @@ static void sdb_copy_mand(wtap_block_t dest_block, wtap_block_t src_block)
     wtapng_s_descr_mandatory_t *src = (wtapng_s_descr_mandatory_t *)src_block->mandatory_data;
     sdb_free_mand(dest_block);
     wtapng_s_descr_mandatory_t *dst = (wtapng_s_descr_mandatory_t *)dest_block->mandatory_data;
-    dst->len = src->len;
+    dst->data_len = src->data_len;
     dst->type = src->type;
-    if (src->data != NULL) {
-        if (dst->data != NULL) {
-            g_free(dst->data);
-        }
-        dst->data = (char *)g_malloc0(dst->len + 1);
-        memcpy(dst->data, src->data, dst->len);
-    }
+    g_free(dst->data);
+    dst->data = (char *)g_memdup(src->data, src->data_len + 1);
 }
 
 void wtap_opttypes_initialize(void)

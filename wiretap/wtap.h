@@ -1368,9 +1368,9 @@ typedef struct wtapng_if_descr_mandatory_s {
  * Secrets description data
  */
 typedef struct wtapng_s_descr_mandatory_s {
-	guint32 				len;				/** length of keyfile in bytes */
-	guint32 				type;				/** type of keys stored in keyfile */
-	char 					*data;				/** string holding keyfile contents */
+	guint32                type;                  /** type of keys stored in keyfile */
+	guint32                data_len;              /** length of keyfile in bytes */
+	char                  *data;                  /** string holding keyfile contents */
 } wtapng_s_descr_mandatory_t;
 
 /* Interface description data - Option 11 structure */
@@ -1733,7 +1733,7 @@ void wtap_write_shb_comment(wtap *wth, gchar *comment);
  * @return The secrets collected during file reading
  */
 WS_DLL_PUBLIC
-char *wtap_file_get_secrets_data(wtap *wth, const char *type);
+const char *wtap_file_get_secrets_data(wtap *wth, const char *type);
 
 /**
  * @brief Gets existing interface descriptions.

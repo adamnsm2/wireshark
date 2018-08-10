@@ -5149,27 +5149,6 @@ tls13_key_update(SslDecryptSession *ssl, gboolean is_from_server)
     tls13_generate_keys(ssl, app_secret, is_from_server);
 }
 
-/** SSL keylog file handling. {{{ */
-static gboolean
-file_needs_reopen(FILE *fp, const char *filename)
-{
-    ws_statb64 open_stat, current_stat;
-
-    /* consider a file deleted when stat fails for either file,
-     * or when the residing device / inode has changed. */
-    if (0 != ws_fstat64(ws_fileno(fp), &open_stat))
-        return TRUE;
-    if (0 != ws_stat64(filename, &current_stat))
-        return TRUE;
-
-    /* Note: on Windows, ino may be 0. Existing files cannot be deleted on
-     * Windows, but hopefully the size is a good indicator when a file got
-     * removed and recreated */
-    return  open_stat.st_dev != current_stat.st_dev ||
-            open_stat.st_ino != current_stat.st_ino ||
-            open_stat.st_size > current_stat.st_size;
-}
-
 typedef struct ssl_master_key_match_group {
     const char *re_group_name;
     GHashTable *master_key_ht;
@@ -5309,9 +5288,29 @@ ssl_compile_keyfile_regex(void)
 }
 
 
+/** SSL keylog file handling. {{{ */
+static gboolean
+file_needs_reopen(FILE *fp, const char *filename)
+{
+    ws_statb64 open_stat, current_stat;
 
-void
-ssl_load_keymem(const char *secrets, ssl_master_key_map_t *mk_map) {
+    /* consider a file deleted when stat fails for either file,
+     * or when the residing device / inode has changed. */
+    if (0 != ws_fstat64(ws_fileno(fp), &open_stat))
+        return TRUE;
+    if (0 != ws_stat64(filename, &current_stat))
+        return TRUE;
+
+    /* Note: on Windows, ino may be 0. Existing files cannot be deleted on
+     * Windows, but hopefully the size is a good indicator when a file got
+     * removed and recreated */
+    return  open_stat.st_dev != current_stat.st_dev ||
+            open_stat.st_ino != current_stat.st_ino ||
+            open_stat.st_size > current_stat.st_size;
+}
+
+static void
+ssl_load_keymem(const char *secrets, const ssl_master_key_map_t *mk_map) {
     /* Note: we have already guaranteed by its construction that secrets is
      * null-terminated, so functions like strlen and strtok are safe
      */
@@ -5333,9 +5332,11 @@ ssl_load_keymem(const char *secrets, ssl_master_key_map_t *mk_map) {
 }
 
 void
-ssl_load_keyfile(const gchar *ssl_keylog_filename, FILE **keylog_file,
+ssl_load_keyfile(const gchar *ssl_keylog_filename, const char *in_mem_secrets, FILE **keylog_file,
                  const ssl_master_key_map_t *mk_map)
 {
+    ssl_load_keymem(in_mem_secrets, mk_map);
+
     /* no need to try if no key log file is configured. */
     if (!ssl_keylog_filename || !*ssl_keylog_filename) {
         ssl_debug_printf("%s dtls/ssl.keylog_file is not configured!\n",

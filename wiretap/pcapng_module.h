@@ -31,7 +31,7 @@
 /*
  * Secret types for SDB:s
  */
-#define SECRET_TYPE_SSL 		0x00000001 /* SSL Secret Type */
+#define SECRET_TYPE_SSL 		0x53534c4b /* SSL Secret Type */
 
 /* Maximum number of lines in an SSL SDB. It is equal to 1GB */
 #define SSL_MAX_BYTES 			1000000000

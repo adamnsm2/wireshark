@@ -794,9 +794,8 @@ dissect_dtls_record(tvbuff_t *tvb, packet_info *pinfo,
                                    dtls_record_tree, offset, session,
                                    is_from_server, ssl);
     if (ssl) {
-        ssl_load_keymem(epan_get_secrets_data(pinfo->epan, "ssl"), &dtls_master_key_map);
-        ssl_load_keyfile(dtls_options.keylog_filename, &dtls_keylog_file,
-                         &dtls_master_key_map);
+        ssl_load_keyfile(dtls_options.keylog_filename, epan_get_secrets_data(pinfo->epan, "ssl"),
+          &dtls_keylog_file, &dtls_master_key_map);
         ssl_finalize_decryption(ssl, &dtls_master_key_map);
         ssl_change_cipher(ssl, ssl_packet_from_server(session, dtls_associations, pinfo));
     }
@@ -1349,9 +1348,8 @@ dissect_dtls_handshake(tvbuff_t *tvb, packet_info *pinfo,
             ssl_dissect_hnd_cli_keyex(&dissect_dtls_hf, sub_tvb, ssl_hand_tree, 0, length, session);
             if (!ssl)
                 break;
-            ssl_load_keymem(epan_get_secrets_data(pinfo->epan, "ssl"), &dtls_master_key_map);
-            ssl_load_keyfile(dtls_options.keylog_filename, &dtls_keylog_file,
-                             &dtls_master_key_map);
+            ssl_load_keyfile(dtls_options.keylog_filename, epan_get_secrets_data(pinfo->epan, "ssl"),
+              &dtls_keylog_file, &dtls_master_key_map);
             /* try to find master key from pre-master key */
             if (!ssl_generate_pre_master_secret(ssl, length, sub_tvb, 0,
                                                 dtls_options.psk,

@@ -1109,8 +1109,8 @@ decrypt_tls13_early_data(tvbuff_t *tvb, packet_info *pinfo, guint32 offset,
         return success;
     }
     ssl->state |= SSL_SEEN_0RTT_APPDATA;
-    ssl_load_keymem(epan_get_secrets_data(pinfo->epan, "ssl"), &ssl_master_key_map);
-    ssl_load_keyfile(ssl_options.keylog_filename, &ssl_keylog_file, &ssl_master_key_map);
+    ssl_load_keyfile(ssl_options.keylog_filename, epan_get_secrets_data(pinfo->epan, "ssl"),
+        &ssl_keylog_file, &ssl_master_key_map);
     StringInfo *secret = tls13_load_secret(ssl, &ssl_master_key_map, FALSE, TLS_SECRET_0RTT_APP);
     if (!secret) {
         ssl_debug_printf("Missing secrets, early data decryption not possible!\n");
@@ -1943,9 +1943,8 @@ dissect_ssl3_record(tvbuff_t *tvb, packet_info *pinfo,
             break;
         }
         if (ssl) {
-            ssl_load_keymem(epan_get_secrets_data(pinfo->epan, "ssl"), &ssl_master_key_map);
-            ssl_load_keyfile(ssl_options.keylog_filename, &ssl_keylog_file,
-                             &ssl_master_key_map);
+            ssl_load_keyfile(ssl_options.keylog_filename, epan_get_secrets_data(pinfo->epan, "ssl"),
+                &ssl_keylog_file, &ssl_master_key_map);
             ssl_finalize_decryption(ssl, &ssl_master_key_map);
             ssl_change_cipher(ssl, ssl_packet_from_server(session, ssl_associations, pinfo));
         }
@@ -2309,8 +2308,8 @@ dissect_ssl3_handshake(tvbuff_t *tvb, packet_info *pinfo,
                 ssl_dissect_hnd_srv_hello(&dissect_ssl3_hf, tvb, pinfo, ssl_hand_tree,
                         offset, offset + length, session, ssl, FALSE, is_hrr);
                 if (ssl) {
-                    ssl_load_keymem(epan_get_secrets_data(pinfo->epan, "ssl"), &ssl_master_key_map);
-                    ssl_load_keyfile(ssl_options.keylog_filename, &ssl_keylog_file, &ssl_master_key_map);
+                    ssl_load_keyfile(ssl_options.keylog_filename, epan_get_secrets_data(pinfo->epan, "ssl"),
+                        &ssl_keylog_file, &ssl_master_key_map);
                     /* Create client and server decoders for TLS 1.3.
                      * Create client decoder based on HS secret only if there is
                      * no early data, or if there is no decryptable early data. */
@@ -2337,8 +2336,8 @@ dissect_ssl3_handshake(tvbuff_t *tvb, packet_info *pinfo,
             case SSL_HND_END_OF_EARLY_DATA:
                 /* https://tools.ietf.org/html/draft-ietf-tls-tls13-19#section-4.5 */
                 if (!is_from_server && ssl) {
-                    ssl_load_keymem(epan_get_secrets_data(pinfo->epan, "ssl"), &ssl_master_key_map);
-                    ssl_load_keyfile(ssl_options.keylog_filename, &ssl_keylog_file, &ssl_master_key_map);
+                    ssl_load_keyfile(ssl_options.keylog_filename, epan_get_secrets_data(pinfo->epan, "ssl"),
+                        &ssl_keylog_file, &ssl_master_key_map);
                     tls13_change_key(ssl, &ssl_master_key_map, FALSE, TLS_SECRET_HANDSHAKE);
                     ssl->has_early_data = FALSE;
                 }
@@ -2383,9 +2382,8 @@ dissect_ssl3_handshake(tvbuff_t *tvb, packet_info *pinfo,
 
                 if (!ssl)
                     break;
-                ssl_load_keymem(epan_get_secrets_data(pinfo->epan, "ssl"), &ssl_master_key_map);
-                ssl_load_keyfile(ssl_options.keylog_filename, &ssl_keylog_file,
-                        &ssl_master_key_map);
+                ssl_load_keyfile(ssl_options.keylog_filename, epan_get_secrets_data(pinfo->epan, "ssl"),
+                    &ssl_keylog_file, &ssl_master_key_map);
                 /* try to find master key from pre-master key */
                 if (!ssl_generate_pre_master_secret(ssl, length, tvb, offset,
                             ssl_options.psk,
@@ -2398,8 +2396,8 @@ dissect_ssl3_handshake(tvbuff_t *tvb, packet_info *pinfo,
                 ssl_dissect_hnd_finished(&dissect_ssl3_hf, tvb, ssl_hand_tree,
                         offset, offset + length, session, &ssl_hfs);
                 if (ssl) {
-                    ssl_load_keymem(epan_get_secrets_data(pinfo->epan, "ssl"), &ssl_master_key_map);
-                    ssl_load_keyfile(ssl_options.keylog_filename, &ssl_keylog_file, &ssl_master_key_map);
+                    ssl_load_keyfile(ssl_options.keylog_filename, epan_get_secrets_data(pinfo->epan, "ssl"),
+                        &ssl_keylog_file, &ssl_master_key_map);
                     tls13_change_key(ssl, &ssl_master_key_map, is_from_server, TLS_SECRET_APP);
                 }
                 break;
@@ -3999,8 +3997,8 @@ tls13_exporter(packet_info *pinfo, gboolean is_early,
     }
 
     SslDecryptSession *ssl_session = (SslDecryptSession *)conv_data;
-    ssl_load_keymem(epan_get_secrets_data(pinfo->epan, "ssl"), &ssl_master_key_map);
-    ssl_load_keyfile(ssl_options.keylog_filename, &ssl_keylog_file, &ssl_master_key_map);
+    ssl_load_keyfile(ssl_options.keylog_filename, epan_get_secrets_data(pinfo->epan, "ssl"),
+        &ssl_keylog_file, &ssl_master_key_map);
     key_map = is_early ? ssl_master_key_map.tls13_early_exporter
                        : ssl_master_key_map.tls13_exporter;
     secret = (StringInfo *)g_hash_table_lookup(key_map, &ssl_session->client_random);

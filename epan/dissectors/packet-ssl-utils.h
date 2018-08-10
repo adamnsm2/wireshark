@@ -688,13 +688,9 @@ extern void
 ssl_common_cleanup(ssl_master_key_map_t *master_key_map, FILE **ssl_keylog_file,
                    StringInfo *decrypted_data, StringInfo *compressed_data);
 
-/* tries to update the secrets cache from an in-memory keyfile */
+/* tries to update the secrets cache from the given filename and in-memory keyfile*/
 extern void
-ssl_load_keymem(const char *secrets, ssl_master_key_map_t *mk_map);
-
-/* tries to update the secrets cache from the given filename */
-extern void
-ssl_load_keyfile(const gchar *ssl_keylog_filename, FILE **keylog_file,
+ssl_load_keyfile(const gchar *ssl_keylog_filename, const char *in_mem_secrets, FILE **keylog_file,
                  const ssl_master_key_map_t *mk_map);
 
 /* parse ssl related preferences (private keys and ports association strings) */

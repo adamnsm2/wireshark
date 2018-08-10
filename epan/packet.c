@@ -227,8 +227,6 @@ static GSList *cleanup_routines = NULL;
 static GSList *shutdown_routines = NULL;
 
 typedef void (*void_func_t)(void);
-/* specify type for routines that take in an epan session */
-typedef void (*session_func_t)(const epan_t *);
 
 /* Initialize all data structures used for dissection. */
 static void
@@ -237,7 +235,6 @@ call_routine(gpointer routine, gpointer dummy _U_)
 	void_func_t func = (void_func_t)routine;
 	(*func)();
 }
-
 
 void
 packet_cleanup(void)
